@@ -2,20 +2,23 @@
 
 `compose.yml` in this directory deploys KiCAD Prism as a Coolify v4
 Application with the Docker Compose build pack. It pulls the digest-pinned
-`v4.0.0-alpha` release images from GHCR. The Coolify server builds nothing, and
+`v5.2.0-alpha` release images from GHCR. The Coolify server builds nothing, and
 the images match the commit this fork's `main` points to.
 
 Coolify's proxy terminates HTTPS for the `frontend` service. The frontend's
-nginx proxies `/api`, `/oauth`, `/remote-provider` and
-`/.well-known/kicad-remote-provider` to the backend over the stack network. No
+nginx proxies `/api`, `/oauth`, `/git`, `/mcp`, `/remote-provider` and the
+`/.well-known` discovery documents to the backend over the stack network. No
 host ports are published.
+
+The administrator guides are on the
+[KiCAD Prism docs site](https://krishna-swaroop.github.io/KiCAD-Prism/).
 
 ## Requirements
 
 - A Coolify v4 server on **Linux AMD64**. Native ARM64 images are not
   published.
 - At least 4 vCPU and 16 GB RAM for evaluation; 8 vCPU and 32 GB for a small
-  team. See [Worker sizing](../../docs/DEPLOYMENT.md#worker-sizing).
+  team. See [Sizing](https://krishna-swaroop.github.io/KiCAD-Prism/admin/deployment/#sizing).
 - Enough disk for the backend image, which is several GB because it bundles
   KiCad, plus your repositories and generated artifacts.
 - A DNS record, such as `prism.example.com`, pointing at the Coolify server.
@@ -102,8 +105,8 @@ available. Every absolute URL in the last two responses must start with your
 3. In Settings, assign roles and add a second administrator.
 4. Import a small repository and run one comparison before you invite the team.
 
-Read [Authentication and access](../../docs/AUTHENTICATION_AND_ACCESS.md) before
-onboarding other people.
+Read [Authentication](https://krishna-swaroop.github.io/KiCAD-Prism/admin/authentication/)
+before onboarding other people.
 
 ## Optional settings
 
@@ -111,9 +114,10 @@ onboarding other people.
 | --- | --- |
 | `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_PROVIDER_NAME` | Single sign-on. Register `https://prism.example.com/auth/callback` and `https://prism.example.com/oauth/oidc/callback` with the provider. Set `PASSWORD_AUTH_ENABLED=false` to make SSO the only login method. |
 | `ALLOWED_USERS_STR`, `ALLOWED_DOMAINS_STR`, `DEFAULT_VIEWER_DOMAINS_STR` | Restrict who can sign in, or grant viewer access by email domain |
-| `GITHUB_TOKEN`, `GITLAB_TOKEN`, `PRISM_FORGE_HOSTS` | HTTPS access to private repositories and release publishing. See [Forge hosts](../../docs/FORGE_HOSTS.md). |
+| `GITHUB_TOKEN`, `GITLAB_TOKEN`, `PRISM_FORGE_HOSTS` | HTTPS access to private repositories and release publishing. See [Connect GitLab](https://krishna-swaroop.github.io/KiCAD-Prism/admin/gitlab/) and [Configuration](https://krishna-swaroop.github.io/KiCAD-Prism/admin/configuration/#release-studio). |
 | `IMPORT_ALLOWED_HOSTS_STR` | Restrict the Git hosts projects can be imported from |
-| `TRACKER_CREDENTIAL_ROOT_KEY` | Required before you configure GitHub or GitLab issue trackers. Generate with `openssl rand -hex 32` and back it up. See [Tracker integration](../../docs/TRACKER_INTEGRATION.md). |
+| `TRACKER_CREDENTIAL_ROOT_KEY` | Required before you configure GitHub or GitLab issue trackers. Generate with `openssl rand -hex 32` and back it up. See [Issue trackers](https://krishna-swaroop.github.io/KiCAD-Prism/admin/issue-trackers/). |
+| `COMMENT_ATTACHMENT_LINK_SECRET` | Signs links to images attached to comments that are published as tracker issues. Unset, the issue shows the file name instead. Generate with `openssl rand -hex 32`. |
 | `WORKSPACE_NAME` | Name shown on the login page |
 
 For SSH access to private repositories, open Settings as an administrator,
@@ -134,9 +138,16 @@ on larger servers.
 | `UVICORN_WORKERS` | `2` | API processes |
 | `PRISM_WORKER_CONCURRENCY` | `2` | Parallel general jobs |
 | `CATALOG_WORKER_CONCURRENCY` | `1` | Parallel catalog jobs |
+| `PRISM_DESIGN_BUNDLE_AUTO_BUILD` | `true` | Builds a design bundle after every import and sync, and prebuilds each branch's newest commits and every tag. Set `false` on a small server to build bundles only when a page needs one. |
 
 Raise one concurrency setting at a time and watch memory and job duration.
 Changing a value requires a redeploy.
+
+The general worker sizes its job memory budget from its container limit: half
+of `PRISM_WORKER_MEMORY_LIMIT`, between 4 and 8 GiB. If design bundle builds of
+large boards are killed for running out of memory, raise
+`PRISM_WORKER_MEMORY_LIMIT` to `12g`, the release default, on a server with the
+memory to spare.
 
 ## Persistent state
 
@@ -164,19 +175,24 @@ tar -C data -czf prism-files.tar.gz projects ssh
 Store both files off the server and encrypt them. They contain source
 repositories, tokens and SSH private keys. `scripts/prism_backup.py` targets
 the release bundle layout and has not been tested against Coolify's rendered
-compose file. See [Operations](../../docs/OPERATIONS.md) for restore testing.
+compose file. See [Operations](https://krishna-swaroop.github.io/KiCAD-Prism/admin/operations/)
+for restore testing.
 
 ## Upgrades
 
-1. Read the new release's `RELEASE_NOTES.md` and `UPGRADES.md`, and take a
-   backup.
+1. Read the new release's `RELEASE_NOTES.md` and
+   [Upgrades](https://krishna-swaroop.github.io/KiCAD-Prism/admin/upgrades/),
+   and take a backup.
 2. Copy `PRISM_BACKEND_IMAGE` and `PRISM_FRONTEND_IMAGE` from the new release
    bundle's `.env.example`. Either set them in Coolify or update the defaults
-   in this file and push.
-3. Redeploy.
+   in this file and push. Compare the bundle's `compose.yml` with the previous
+   release's and carry any change over to this file.
+3. Redeploy. Prism applies database migrations at startup; each one logs an
+   `Applying ... schema migration` line in the backend log.
 
 Use the digests, not mutable tags. They are the images the release workflow
-tested.
+tested. If you set the image variables in Coolify, they override the defaults
+in this file, so clear or update them when you upgrade.
 
 ## Deploying your own code
 
@@ -198,7 +214,7 @@ inside the build.
   `PUBLIC_BASE_URL` does not exactly match the domain on the frontend service.
 - **Frontend returns 502**: the backend is still starting or unhealthy. Check
   the backend logs in Coolify.
-- **Large library uploads fail after about 60 seconds**: Traefik v3 defaults to a
-  60-second read timeout on its entrypoints. In **Servers -> Proxy**, add
+- **Large library uploads or `git push` to Prism fail after about 60 seconds**:
+  Traefik v3 defaults to a 60-second read timeout on its entrypoints. In **Servers -> Proxy**, add
   `--entrypoints.https.transport.respondingTimeouts.readTimeout=0` to the
   Traefik command and restart the proxy.

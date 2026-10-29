@@ -1,6 +1,6 @@
 # KiCAD Prism on Coolify (Docker Compose build pack).
 #
-# Derived from deploy/release/compose.yml for the v4.0.0-alpha release. It
+# Derived from deploy/release/compose.yml for the v5.2.0-alpha release. It
 # pulls the release's digest-pinned images, so the Coolify server does not
 # build KiCad, Rust, or the viewer from source.
 #
@@ -25,6 +25,9 @@ services:
     platform: linux/amd64
     restart: unless-stopped
     shm_size: 256mb
+    # Loaded so the ops get_slow_queries diagnostic can read query timings
+    # (ADR §11, D25). Removing it only makes that tool report available=false.
+    command: ["postgres", "-c", "shared_preload_libraries=pg_stat_statements", "-c", "pg_stat_statements.track=top"]
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-kicad_prism}
       POSTGRES_USER: ${POSTGRES_USER:-kicad_prism}
@@ -38,7 +41,7 @@ services:
       retries: 20
 
   backend:
-    image: ${PRISM_BACKEND_IMAGE:-ghcr.io/krishna-swaroop/kicad-prism-backend@sha256:66286ada7a30f2d13207d91714acc555718dec3c74135b7d43ea36177eac2ac9}
+    image: ${PRISM_BACKEND_IMAGE:-ghcr.io/krishna-swaroop/kicad-prism-backend@sha256:c974b18c30db3259316bd693adfe6f280c545c2686513853db8c4231a0c676ec}
     platform: linux/amd64
     restart: unless-stopped
     # Ceilings, not reservations. A cpus value above the server's CPU count
@@ -77,6 +80,9 @@ services:
       TRACKER_CREDENTIAL_ROOT_KEY_ID: ${TRACKER_CREDENTIAL_ROOT_KEY_ID:-v1}
       TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY: ${TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY:-}
       TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID: ${TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID:-}
+      # Signs image links in published tracker issues. Unset sends the file
+      # name instead. Generate with: openssl rand -hex 32
+      COMMENT_ATTACHMENT_LINK_SECRET: ${COMMENT_ATTACHMENT_LINK_SECRET:-}
 
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       GITLAB_TOKEN: ${GITLAB_TOKEN:-}
@@ -86,7 +92,7 @@ services:
       PRISM_WORKER_CONCURRENCY: ${PRISM_WORKER_CONCURRENCY:-2}
       CATALOG_WORKER_CONCURRENCY: ${CATALOG_WORKER_CONCURRENCY:-1}
       CATALOG_KICAD_CONCURRENCY: ${CATALOG_KICAD_CONCURRENCY:-1}
-      PRISM_PCB_GEOMETRY_BACKEND: legacy
+      PRISM_DESIGN_BUNDLE_AUTO_BUILD: ${PRISM_DESIGN_BUNDLE_AUTO_BUILD:-true}
     depends_on:
       postgres:
         condition: service_healthy
@@ -97,7 +103,7 @@ services:
       - ./data/ssh:/root/.ssh:rw
 
   catalog-worker:
-    image: ${PRISM_BACKEND_IMAGE:-ghcr.io/krishna-swaroop/kicad-prism-backend@sha256:66286ada7a30f2d13207d91714acc555718dec3c74135b7d43ea36177eac2ac9}
+    image: ${PRISM_BACKEND_IMAGE:-ghcr.io/krishna-swaroop/kicad-prism-backend@sha256:c974b18c30db3259316bd693adfe6f280c545c2686513853db8c4231a0c676ec}
     platform: linux/amd64
     restart: unless-stopped
     cpus: ${CATALOG_WORKER_CPU_LIMIT:-2.0}
@@ -131,7 +137,7 @@ services:
       - catalog
 
   prism-worker:
-    image: ${PRISM_BACKEND_IMAGE:-ghcr.io/krishna-swaroop/kicad-prism-backend@sha256:66286ada7a30f2d13207d91714acc555718dec3c74135b7d43ea36177eac2ac9}
+    image: ${PRISM_BACKEND_IMAGE:-ghcr.io/krishna-swaroop/kicad-prism-backend@sha256:c974b18c30db3259316bd693adfe6f280c545c2686513853db8c4231a0c676ec}
     platform: linux/amd64
     restart: unless-stopped
     cpus: ${PRISM_WORKER_CPU_LIMIT:-2.0}
@@ -147,6 +153,7 @@ services:
       TRACKER_CREDENTIAL_ROOT_KEY_ID: ${TRACKER_CREDENTIAL_ROOT_KEY_ID:-v1}
       TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY: ${TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY:-}
       TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID: ${TRACKER_CREDENTIAL_PREVIOUS_ROOT_KEY_ID:-}
+      COMMENT_ATTACHMENT_LINK_SECRET: ${COMMENT_ATTACHMENT_LINK_SECRET:-}
 
       # Imports, sync, and Release Studio publishing run in this worker.
       GITHUB_TOKEN: ${GITHUB_TOKEN:-}
@@ -157,7 +164,10 @@ services:
       PRISM_WORKER_CONCURRENCY: ${PRISM_WORKER_CONCURRENCY:-2}
       CATALOG_WORKER_CONCURRENCY: ${CATALOG_WORKER_CONCURRENCY:-1}
       CATALOG_KICAD_CONCURRENCY: ${CATALOG_KICAD_CONCURRENCY:-1}
-      PRISM_PCB_GEOMETRY_BACKEND: legacy
+      # Builds a design bundle after every import and sync, and prebuilds each
+      # branch's newest commits and every tag, one at a time. Set false on a
+      # small server to build bundles only when a page needs one.
+      PRISM_DESIGN_BUNDLE_AUTO_BUILD: ${PRISM_DESIGN_BUNDLE_AUTO_BUILD:-true}
     depends_on:
       postgres:
         condition: service_healthy
@@ -178,7 +188,7 @@ services:
       - app.prism_worker
 
   frontend:
-    image: ${PRISM_FRONTEND_IMAGE:-ghcr.io/krishna-swaroop/kicad-prism-frontend@sha256:28db44921e3eb107b99e7303372b1fedc8c99fa50fc0187aced0509678cf9c72}
+    image: ${PRISM_FRONTEND_IMAGE:-ghcr.io/krishna-swaroop/kicad-prism-frontend@sha256:e18f994ddca41fc6fb9865d55f717dc60643dfd22bc1bfc9de11eb714ffb73b3}
     platform: linux/amd64
     restart: unless-stopped
     # Coolify routes the assigned domain to this container's port 80.
