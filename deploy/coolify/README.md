@@ -2,7 +2,7 @@
 
 `compose.yml` in this directory deploys KiCAD Prism as a Coolify v4
 Application with the Docker Compose build pack. It pulls the digest-pinned
-`v5.2.0-alpha` release images from GHCR. The Coolify server builds nothing, and
+`v5.3.0-alpha` release images from GHCR. The Coolify server builds nothing, and
 the images match the commit this fork's `main` points to.
 
 Coolify's proxy terminates HTTPS for the `frontend` service. The frontend's
@@ -115,10 +115,19 @@ before onboarding other people.
 | `OIDC_ISSUER_URL`, `OIDC_CLIENT_ID`, `OIDC_CLIENT_SECRET`, `OIDC_PROVIDER_NAME` | Single sign-on. Register `https://prism.example.com/auth/callback` and `https://prism.example.com/oauth/oidc/callback` with the provider. Set `PASSWORD_AUTH_ENABLED=false` to make SSO the only login method. |
 | `ALLOWED_USERS_STR`, `ALLOWED_DOMAINS_STR`, `DEFAULT_VIEWER_DOMAINS_STR` | Restrict who can sign in, or grant viewer access by email domain |
 | `GITHUB_TOKEN`, `GITLAB_TOKEN`, `PRISM_FORGE_HOSTS` | HTTPS access to private repositories and release publishing. See [Connect GitLab](https://krishna-swaroop.github.io/KiCAD-Prism/admin/gitlab/) and [Configuration](https://krishna-swaroop.github.io/KiCAD-Prism/admin/configuration/#release-studio). |
+| `PRISM_GIT_CREDENTIALS`, `EXTRA_GIT_TOKEN_1`, `EXTRA_GIT_TOKEN_2` | HTTPS tokens for other Git servers, each sent only to remotes under its `url_prefix`. Put the token in an `EXTRA_GIT_TOKEN_*` slot and name that slot as `token_name`, for example `[{"url_prefix":"https://git.example.com/","token_name":"EXTRA_GIT_TOKEN_1"}]`. A `token_name` in `PRISM_FORGE_HOSTS` uses the same slots. See [Git credentials](https://krishna-swaroop.github.io/KiCAD-Prism/admin/configuration/#git-credentials). |
 | `IMPORT_ALLOWED_HOSTS_STR` | Restrict the Git hosts projects can be imported from |
-| `TRACKER_CREDENTIAL_ROOT_KEY` | Required before you configure GitHub or GitLab issue trackers. Generate with `openssl rand -hex 32` and back it up. See [Issue trackers](https://krishna-swaroop.github.io/KiCAD-Prism/admin/issue-trackers/). |
+| `TRACKER_CREDENTIAL_ROOT_KEY` | Encrypts stored connector credentials. Required before you configure GitHub or GitLab issue trackers or Supply distributor connectors. Generate with `openssl rand -hex 32` and back it up. See [Issue trackers](https://krishna-swaroop.github.io/KiCAD-Prism/admin/issue-trackers/). |
+| `CATALOG_KLC_ENABLED` | KiCad Library Convention checks in the Library Manager. On by default, as in the release. |
 | `COMMENT_ATTACHMENT_LINK_SECRET` | Signs links to images attached to comments that are published as tracker issues. Unset, the issue shows the file name instead. Generate with `openssl rand -hex 32`. |
 | `WORKSPACE_NAME` | Name shown on the login page |
+
+The release bundle passes its whole `.env` file to every container. This file
+lists each variable instead, so Coolify can show it. To change a Prism setting
+that is not listed, such as `PRISM_SUPPLY_ENABLED`, add it to the
+`environment:` of the services that read it in `compose.yml`, push, and set it
+in Coolify. The [Configuration reference](https://krishna-swaroop.github.io/KiCAD-Prism/admin/configuration/)
+lists every setting.
 
 For SSH access to private repositories, open Settings as an administrator,
 copy Prism's SSH public key, install it as a read-only deploy key and pin the
